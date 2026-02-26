@@ -68,3 +68,109 @@ impl Config {
         Ok(config)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_config_with_stop_list() {
+        let toml_str = r#"
+            explain_language = "ru"
+            stop_list = ["rm -rf /", "mkfs", "dd if=/dev/zero"]
+
+            [[backends]]
+            api_url = "https://openrouter.ai/api/v1/chat/completions"
+            api_key = "test-key"
+            model = "test-model"
+            timeout_secs = 30
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.explain_language, "ru");
+        assert_eq!(config.stop_list.len(), 3);
+        assert!(config.stop_list.contains(&"rm -rf /".to_string()));
+        assert!(config.stop_list.contains(&"mkfs".to_string()));
+        assert!(config.stop_list.contains(&"dd if=/dev/zero".to_string()));
+        assert_eq!(config.backends.len(), 1);
+        assert_eq!(
+            config.backends[0].api_url,
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+        assert_eq!(config.backends[0].api_key, Some("test-key".to_string()));
+        assert_eq!(config.backends[0].model, "test-model");
+        assert_eq!(config.backends[0].timeout_secs, 30);
+    }
+
+    #[test]
+    fn test_parse_config_empty_stop_list() {
+        let toml_str = r#"
+            explain_language = "en"
+            stop_list = []
+
+            [[backends]]
+            api_url = "https://example.com"
+            api_key = "key"
+            model = "model"
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.stop_list.is_empty());
+    }
+
+    #[test]
+    fn test_parse_config_missing_stop_list() {
+        let toml_str = r#"
+            explain_language = "en"
+
+            [[backends]]
+            api_url = "https://example.com"
+            api_key = "key"
+            model = "model"
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        // Должно быть значение по умолчанию — пустой вектор
+        assert!(config.stop_list.is_empty());
+    }
+
+    #[test]
+    fn test_parse_config_missing_backends() {
+        let toml_str = r#"
+        explain_language = "ru"
+        stop_list = ["rm -rf"]
+        "#;
+        let result: Result<Config, toml::de::Error> = toml::from_str(toml_str);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("missing field `backends`"));
+    }
+
+    #[test]
+    fn test_parse_config_with_multiple_backends() {
+        let toml_str = r#"
+            explain_language = "ru"
+
+            [[backends]]
+            api_url = "https://openrouter.ai/api/v1/chat/completions"
+            api_key = "key1"
+            model = "model1"
+
+            [[backends]]
+            api_url = "http://localhost:11434/v1/chat/completions"
+            api_key = ""
+            model = "model2"
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.backends.len(), 2);
+        assert_eq!(
+            config.backends[0].api_url,
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+        assert_eq!(
+            config.backends[1].api_url,
+            "http://localhost:11434/v1/chat/completions"
+        );
+    }
+}

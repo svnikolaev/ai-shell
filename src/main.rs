@@ -1,13 +1,17 @@
-use clap::Parser;
 use anyhow::Context;
-
+use clap::Parser;
+use std::path::PathBuf;
+mod cache;
 mod config;
 mod llm;
-mod cache;
 mod shell;
 
 #[derive(Parser)]
-#[command(author, version, about = "AI shell assistant: генерирует bash-команды по запросу")]
+#[command(
+    author,
+    version,
+    about = "AI shell assistant: генерирует bash-команды по запросу"
+)]
 struct Args {
     /// Вопрос на естественном языке
     question: Vec<String>,
@@ -93,8 +97,20 @@ fn main() -> anyhow::Result<()> {
 fn run_test(config: &config::Config) -> anyhow::Result<()> {
     println!("🔍 Тестирование конфигурации ai-shell\n");
 
+    // Показываем путь к конфигу
+    let config_path = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from(".config"))
+        .join("ai-shell")
+        .join("config.toml");
+    println!("📄 Конфиг: {}", config_path.display());
+    if config_path.exists() {
+        println!("   ✅ файл найден");
+    } else {
+        println!("   ❌ файл не найден (используются значения по умолчанию?)");
+    }
+
     // Проверка директории кэша
-    println!("📁 Кэш-директория: {}", config.cache_dir.display());
+    println!("\n📁 Кэш-директория: {}", config.cache_dir.display());
     if config.cache_dir.exists() {
         println!("   ✅ доступна");
     } else {
@@ -103,15 +119,41 @@ fn run_test(config: &config::Config) -> anyhow::Result<()> {
 
     // Проверка стоп-листа
     println!("\n🛑 Стоп-лист: {} записей", config.stop_list.len());
+    if config.stop_list.is_empty() {
+        println!("   ⚠️  стоп-лист пуст — это снижает безопасность!");
+    } else {
+        for pattern in &config.stop_list {
+            println!("   - {}", pattern);
+        }
+    }
 
     // Проверка бэкендов
     println!("\n🌐 Проверка бэкендов:");
+    if config.backends.is_empty() {
+        println!("   ❌ нет ни одного бэкенда в конфиге");
+        return Ok(());
+    }
+
     for (i, backend) in config.backends.iter().enumerate() {
-        print!("   {}. {} ... ", i+1, backend.api_url);
-        match test_backend(backend) {
+        println!("   {}. {}", i + 1, backend.api_url);
+        println!("      Модель: {}", backend.model);
+        if backend.api_key.is_some() {
+            println!("      Ключ: ✅ задан");
+        } else {
+            println!(
+                "      Ключ: ❌ не задан (возможно, используется переменная окружения AI_API_KEY)"
+            );
+        }
+        print!("      Тестовый запрос ... ");
+        match llm::try_backend(
+            "скажи 'test' одной командой echo",
+            backend,
+            &config.explain_language,
+        ) {
             Ok((cmd, exp)) => {
-                println!("✅ работает");
-                println!("      Пример ответа: команда = \"{}\", объяснение = \"{}\"", cmd, exp);
+                println!("✅ успех");
+                println!("         команда = \"{}\"", cmd);
+                println!("         объяснение = \"{}\"", exp);
             }
             Err(e) => {
                 println!("❌ ошибка: {}", e);
@@ -120,18 +162,4 @@ fn run_test(config: &config::Config) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn test_backend(backend: &config::Backend) -> anyhow::Result<(String, String)> {
-    // Используем простой запрос, который точно должен сработать
-    let test_question = "скажи 'test' одной командой echo";
-    // Можно переиспользовать llm::try_backend, но она требует explain_language.
-    // Для теста создадим временный конфиг с explain_language = "ru"
-    let dummy_config = config::Config {
-        backends: vec![backend.clone()],
-        explain_language: "ru".to_string(),
-        cache_dir: Default::default(),
-        stop_list: vec![],
-    };
-    llm::ask(test_question, &dummy_config)
 }
