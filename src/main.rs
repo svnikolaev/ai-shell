@@ -1,12 +1,15 @@
 use anyhow::Context;
+use atty::Stream;
+use chrono::{DateTime, Local, TimeZone};
+use clap::CommandFactory;
 use clap::Parser;
+use std::io::Read;
 use std::path::PathBuf;
+
 mod cache;
 mod config;
 mod llm;
 mod shell;
-use clap::CommandFactory;
-
 #[derive(Parser)]
 #[command(
     author,
@@ -32,17 +35,62 @@ struct Args {
     /// Проверить конфигурацию и доступность бэкендов
     #[arg(long)]
     test: bool,
+
+    /// Показать последние запросы (можно указать число, по умолчанию 10)
+    #[arg(short = 'i', long, num_args = 0..=1, default_missing_value = "10")]
+    history: Option<usize>,
 }
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let config = config::Config::load()?;
 
-    // Новое поведение: если нет ни флагов, ни вопроса — показать последнюю команду или help
+    // Режим истории
+    if let Some(n) = args.history {
+        let entries = cache::get_history(n, &config)?;
+        if entries.is_empty() {
+            println!("История пуста.");
+        } else {
+            for (i, entry) in entries.iter().enumerate() {
+                let datetime: DateTime<Local> =
+                    Local.timestamp_opt(entry.timestamp as i64, 0).unwrap();
+                println!(
+                    "{}. [{}] {}",
+                    i + 1,
+                    datetime.format("%Y-%m-%d %H:%M:%S"),
+                    entry.question
+                );
+                println!("   → {}", entry.command);
+                if args.explain {
+                    println!("   Объяснение: {}", entry.explanation);
+                }
+                println!();
+            }
+        }
+        return Ok(());
+    }
+
+    // Режим объяснения команды из stdin (если нет аргументов и есть данные в пайпе)
     if !args.test && !args.last && !args.explain && !args.no_cache && args.question.is_empty() {
+        if !atty::is(Stream::Stdin) {
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            let command = buffer.trim();
+            if command.is_empty() {
+                eprintln!("Пустой ввод в stdin.");
+                std::process::exit(1);
+            }
+            // Получаем объяснение
+            let explanation = llm::explain_command(command, &config)?;
+            // Выводим команду и объяснение (как при -e)
+            println!("{}", command);
+            println!("\nОбъяснение: {}", explanation);
+            return Ok(());
+        }
+
+        // Если нет stdin, показываем последнюю команду или help
         match cache::read_last(&config) {
             Ok(cmd) => {
-                // Проверяем стоп-лист перед выводом
                 if shell::is_dangerous(&cmd, &config.stop_list) {
                     eprintln!("❌ Последняя команда заблокирована стоп-листом. Вывод отменён.");
                     std::process::exit(1);
@@ -51,19 +99,19 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             Err(_) => {
-                // Нет последней команды — показываем справку
                 Args::command().print_help()?;
-                println!(); // добавляем перевод строки после справки
+                println!();
                 return Ok(());
             }
         }
     }
 
-    // Далее идёт существующая логика
+    // Режим тестирования
     if args.test {
         return run_test(&config);
     }
 
+    // Режим --last
     if args.last {
         let last_cmd = cache::read_last(&config)
             .context("Нет сохранённой последней команды (файл last_command отсутствует)")?;
@@ -79,7 +127,6 @@ fn main() -> anyhow::Result<()> {
     if args.question.is_empty() {
         anyhow::bail!("Вопрос не указан. Используйте -l для вывода последней команды.");
     }
-
     let question = args.question.join(" ");
 
     // Получаем команду и объяснение (из кэша или через LLM)
@@ -105,6 +152,10 @@ fn main() -> anyhow::Result<()> {
 
     // Сохраняем в last_command
     cache::save_last(&command, &config)?;
+    // Добавляем в историю
+    if let Err(e) = cache::add_to_history(&question, &command, &explanation, &config) {
+        eprintln!("Не удалось сохранить историю: {}", e);
+    }
 
     // Вывод результата
     if args.explain {
@@ -138,10 +189,9 @@ fn run_test(config: &config::Config) -> anyhow::Result<()> {
             println!("   🔐 права: {:o}", metadata.permissions().mode() & 0o777);
         }
 
-        // Проверка содержимого на BOM и CR
         let content = std::fs::read(&config_path)?;
         if content.starts_with(&[0xEF, 0xBB, 0xBF]) {
-            println!("   ⚠️  файл содержит BOM (UTF-8 signature) — это может помешать парсингу");
+            println!("   ⚠️  файл содержит BOM — это может помешать парсингу");
             println!("      Рекомендуется сохранить файл без BOM");
         }
         if content.iter().any(|&b| b == b'\r') {
@@ -164,7 +214,6 @@ fn run_test(config: &config::Config) -> anyhow::Result<()> {
     println!("\n🛑 Стоп-лист: {} записей", config.stop_list.len());
     if config.stop_list.is_empty() {
         println!("   ⚠️  стоп-лист пуст — это снижает безопасность!");
-        // Дополнительная диагностика: если в файле есть упоминание stop_list, но он пуст
         if let Ok(content) = std::fs::read_to_string(&config_path) {
             if content.contains("stop_list") {
                 println!(

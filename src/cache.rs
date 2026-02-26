@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize)]
@@ -7,6 +8,63 @@ pub struct CacheEntry {
     pub command: String,
     pub explanation: String,
     pub timestamp: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct HistoryEntry {
+    pub question: String,
+    pub command: String,
+    pub explanation: String,
+    pub timestamp: u64,
+}
+
+const HISTORY_MAX: usize = 1000; // максимальное количество записей в истории
+
+/// Добавить запись в историю
+pub fn add_to_history(
+    question: &str,
+    command: &str,
+    explanation: &str,
+    config: &crate::config::Config,
+) -> anyhow::Result<()> {
+    let history_file = config.cache_dir.join("history.json");
+    let mut history: VecDeque<HistoryEntry> = if history_file.exists() {
+        let content = std::fs::read_to_string(&history_file)?;
+        serde_json::from_str(&content)?
+    } else {
+        VecDeque::new()
+    };
+
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let entry = HistoryEntry {
+        question: question.to_string(),
+        command: command.to_string(),
+        explanation: explanation.to_string(),
+        timestamp,
+    };
+
+    history.push_front(entry); // новые записи добавляются в начало
+    if history.len() > HISTORY_MAX {
+        history.pop_back();
+    }
+
+    if let Some(parent) = history_file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let content = serde_json::to_string_pretty(&history)?;
+    std::fs::write(history_file, content)?;
+    Ok(())
+}
+
+/// Получить последние N записей истории
+pub fn get_history(n: usize, config: &crate::config::Config) -> anyhow::Result<Vec<HistoryEntry>> {
+    let history_file = config.cache_dir.join("history.json");
+    if !history_file.exists() {
+        return Ok(vec![]);
+    }
+    let content = std::fs::read_to_string(history_file)?;
+    let history: VecDeque<HistoryEntry> = serde_json::from_str(&content)?;
+    Ok(history.into_iter().take(n).collect())
 }
 
 pub fn get(question: &str, config: &crate::config::Config) -> anyhow::Result<Option<CacheEntry>> {
