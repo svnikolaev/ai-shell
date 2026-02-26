@@ -1,17 +1,3 @@
-# Основной бэкенд — OpenRouter (бесплатные модели)
-[[backends]]
-api_url = "https://openrouter.ai/api/v1/chat/completions"
-api_key = "sk-or-v1-..."          # ваш ключ OpenRouter
-model = "deepseek/deepseek-r1:free"  # или другая бесплатная модель
-timeout_secs = 30
-
-# План Б — локальная Ollama (установите и запустите сервер)
-[[backends]]
-api_url = "http://localhost:11434/v1/chat/completions"
-api_key = ""                       # не требуется
-model = "qwen2.5:7b"               # любая загруженная модель
-timeout_secs = 10
-
 # Язык объяснений
 explain_language = "ru"
 
@@ -27,3 +13,17 @@ stop_list = [
     "mkfs",
     "fdisk",
 ]
+
+# Основной бэкенд
+[[backends]]
+api_url = "https://gptunnel.ru/v1/chat/completions"
+api_key = "shds-top-secret-key"  # использовать свой api_key
+model = "gpt-4.1-nano"  # оптимально по соотношению цены, скорости и качества
+timeout_secs = 60
+
+# # План Б — локальная Ollama (установите и запустите сервер)
+# [[backends]]
+# api_url = "http://localhost:11434/v1/chat/completions"
+# api_key = ""                       # не требуется
+# model = "qwen2.5:7b"               # любая загруженная модель
+# timeout_secs = 10

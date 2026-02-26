@@ -30,3 +30,6 @@ tmp.*
 
 # Dependency lock file (optional, usually ignored for libraries)
 Cargo.lock
+
+# Secrets
+config.toml
