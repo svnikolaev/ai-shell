@@ -5,6 +5,7 @@ mod cache;
 mod config;
 mod llm;
 mod shell;
+use clap::CommandFactory;
 
 #[derive(Parser)]
 #[command(
@@ -37,11 +38,32 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let config = config::Config::load()?;
 
+    // Новое поведение: если нет ни флагов, ни вопроса — показать последнюю команду или help
+    if !args.test && !args.last && !args.explain && !args.no_cache && args.question.is_empty() {
+        match cache::read_last(&config) {
+            Ok(cmd) => {
+                // Проверяем стоп-лист перед выводом
+                if shell::is_dangerous(&cmd, &config.stop_list) {
+                    eprintln!("❌ Последняя команда заблокирована стоп-листом. Вывод отменён.");
+                    std::process::exit(1);
+                }
+                println!("{}", cmd);
+                return Ok(());
+            }
+            Err(_) => {
+                // Нет последней команды — показываем справку
+                Args::command().print_help()?;
+                println!(); // добавляем перевод строки после справки
+                return Ok(());
+            }
+        }
+    }
+
+    // Далее идёт существующая логика
     if args.test {
         return run_test(&config);
     }
 
-    // Режим --last
     if args.last {
         let last_cmd = cache::read_last(&config)
             .context("Нет сохранённой последней команды (файл last_command отсутствует)")?;
@@ -57,6 +79,7 @@ fn main() -> anyhow::Result<()> {
     if args.question.is_empty() {
         anyhow::bail!("Вопрос не указан. Используйте -l для вывода последней команды.");
     }
+
     let question = args.question.join(" ");
 
     // Получаем команду и объяснение (из кэша или через LLM)
