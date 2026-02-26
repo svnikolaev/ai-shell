@@ -97,19 +97,39 @@ fn main() -> anyhow::Result<()> {
 fn run_test(config: &config::Config) -> anyhow::Result<()> {
     println!("🔍 Тестирование конфигурации ai-shell\n");
 
-    // Показываем путь к конфигу
+    // ---- Проверка конфигурационного файла ----
     let config_path = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from(".config"))
         .join("ai-shell")
         .join("config.toml");
     println!("📄 Конфиг: {}", config_path.display());
+
     if config_path.exists() {
         println!("   ✅ файл найден");
+        let metadata = std::fs::metadata(&config_path)?;
+        println!("   📏 размер: {} байт", metadata.len());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            println!("   🔐 права: {:o}", metadata.permissions().mode() & 0o777);
+        }
+
+        // Проверка содержимого на BOM и CR
+        let content = std::fs::read(&config_path)?;
+        if content.starts_with(&[0xEF, 0xBB, 0xBF]) {
+            println!("   ⚠️  файл содержит BOM (UTF-8 signature) — это может помешать парсингу");
+            println!("      Рекомендуется сохранить файл без BOM");
+        }
+        if content.iter().any(|&b| b == b'\r') {
+            println!("   ⚠️  файл содержит символы возврата каретки (CR) — возможно, DOS-формат");
+            println!("      Выполните: dos2unix {}", config_path.display());
+        }
     } else {
         println!("   ❌ файл не найден (используются значения по умолчанию?)");
     }
 
-    // Проверка директории кэша
+    // ---- Проверка директории кэша ----
     println!("\n📁 Кэш-директория: {}", config.cache_dir.display());
     if config.cache_dir.exists() {
         println!("   ✅ доступна");
@@ -117,17 +137,31 @@ fn run_test(config: &config::Config) -> anyhow::Result<()> {
         println!("   ⚠️  не существует (будет создана при первом запросе)");
     }
 
-    // Проверка стоп-листа
+    // ---- Проверка стоп-листа ----
     println!("\n🛑 Стоп-лист: {} записей", config.stop_list.len());
     if config.stop_list.is_empty() {
         println!("   ⚠️  стоп-лист пуст — это снижает безопасность!");
+        // Дополнительная диагностика: если в файле есть упоминание stop_list, но он пуст
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if content.contains("stop_list") {
+                println!(
+                    "   ⚠️  В файле присутствует поле stop_list, но после парсинга оно пусто."
+                );
+                println!(
+                    "       Возможно, синтаксическая ошибка в массиве (невидимые символы, неверные кавычки)."
+                );
+                println!(
+                    "       Проверьте строку с stop_list вручную, например, с помощью hexdump."
+                );
+            }
+        }
     } else {
         for pattern in &config.stop_list {
             println!("   - {}", pattern);
         }
     }
 
-    // Проверка бэкендов
+    // ---- Проверка бэкендов ----
     println!("\n🌐 Проверка бэкендов:");
     if config.backends.is_empty() {
         println!("   ❌ нет ни одного бэкенда в конфиге");
