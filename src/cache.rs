@@ -137,6 +137,7 @@ mod tests {
             backends: vec![],
             explain_language: "ru".to_string(),
             stop_list: vec![],
+            os: None,
         };
         let question = "как распаковать tar.gz";
         let cmd = "tar -xzf archive.tar.gz";

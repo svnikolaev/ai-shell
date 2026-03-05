@@ -67,29 +67,33 @@ fn call_backend(
 }
 
 /// Запрос к бэкенду для генерации команды по описанию задачи
-pub fn try_backend(question: &str, backend: &Backend, explain_lang: &str) -> anyhow::Result<(String, String)> {
+pub fn try_backend(question: &str, backend: &Backend, config: &Config) -> anyhow::Result<(String, String)> {
+    let target_os = config.target_os();
     let system_prompt = format!(
-        "Ты — терминальный ассистент. Пользователь описывает задачу на русском языке.\n\
+        "Ты — терминальный ассистент. Пользователь описывает задачу.\n\
          Ответь ТОЛЬКО валидным JSON объектом с двумя полями:\n\
-         - \"command\": строка с bash-командой (одна строка, несколько команд через && или |)\n\
-         - \"explanation\": краткое объяснение команды на русском языке (язык объяснения: {})\n\
+         - \"command\": строка с командой для оболочки (одна строка, несколько команд через && или |)\n\
+         - \"explanation\": краткое объяснение команды. Язык объяснения: {}.\n\
          Не используй markdown, обратные кавычки или пояснения вне JSON.\n\
-         ОС: Linux.",
-        explain_lang
+         ОС: {}.",
+        config.explain_language,
+        target_os
     );
     call_backend(question, &system_prompt, backend)
 }
 
 /// Получить объяснение для готовой команды (переданной пользователем)
 pub fn explain_command(command: &str, config: &Config) -> anyhow::Result<String> {
+    let target_os = config.target_os();
     let system_prompt = format!(
-        "Ты — терминальный ассистент. Пользователь передаёт bash-команду.\n\
+        "Ты — терминальный ассистент. Пользователь передаёт команду для оболочки.\n\
          Ответь ТОЛЬКО валидным JSON объектом с двумя полями:\n\
          - \"command\": строка с исходной командой (без изменений)\n\
-         - \"explanation\": краткое объяснение команды на русском языке (язык объяснения: {})\n\
+         - \"explanation\": краткое объяснение команды. Язык объяснения: {}.\n\
          Не используй markdown, обратные кавычки или пояснения вне JSON.\n\
-         ОС: Linux.",
-        config.explain_language
+         ОС: {}.",
+        config.explain_language,
+        target_os
     );
 
     let mut last_error = None;
@@ -115,7 +119,7 @@ pub fn explain_command(command: &str, config: &Config) -> anyhow::Result<String>
 pub fn ask(question: &str, config: &Config) -> anyhow::Result<(String, String)> {
     let mut last_error = None;
     for (idx, backend) in config.backends.iter().enumerate() {
-        match try_backend(question, backend, &config.explain_language) {
+        match try_backend(question, backend, config) {
             Ok(res) => return Ok(res),
             Err(e) => {
                 eprintln!("⚠️ Бэкенд {} ({}) не сработал: {}", idx + 1, backend.api_url, e);

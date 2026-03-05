@@ -14,16 +14,16 @@ stop_list = [
     "fdisk",
 ]
 
-# Основной бэкенд
+# Primary backend
 [[backends]]
 api_url = "https://gptunnel.ru/v1/chat/completions"
 api_key = "shds-top-secret-key"  # использовать свой api_key
 model = "gpt-4.1-nano"  # оптимально по соотношению цены, скорости и качества
 timeout_secs = 60
 
-# # План Б — локальная Ollama (установите и запустите сервер)
-# [[backends]]
-# api_url = "http://localhost:11434/v1/chat/completions"
-# api_key = ""                       # не требуется
-# model = "qwen2.5:7b"               # любая загруженная модель
-# timeout_secs = 10
+# Local ollama backend
+[[backends]]
+api_url = "http://localhost:11434/v1/chat/completions"
+api_key = ""
+model = "llama3.2:3b"
+timeout_secs = 60

@@ -29,6 +29,7 @@ pub struct Config {
     pub cache_dir: PathBuf,
     #[serde(default)]
     pub stop_list: Vec<String>,
+    pub os: Option<String>,  // целевая ОС (если не указана – определяется автоматически)
 }
 
 fn default_explain_language() -> String {
@@ -67,11 +68,52 @@ impl Config {
 
         Ok(config)
     }
+
+    /// Возвращает название операционной системы для использования в промпте.
+    /// Если в конфиге поле `os` задано, используется оно, иначе – автоопределение.
+    pub fn target_os(&self) -> String {
+        if let Some(ref custom_os) = self.os {
+            return custom_os.clone();
+        }
+        // Автоопределение на основе компиляции
+        match std::env::consts::OS {
+            "linux" => "Linux".to_string(),
+            "macos" => "macOS".to_string(),
+            "windows" => "Windows".to_string(),
+            other => other.to_string(), // fallback (например, freebsd, openbsd)
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_target_os_default() {
+        let config = Config {
+            backends: vec![],
+            explain_language: "en".to_string(),
+            cache_dir: PathBuf::from("/tmp"),
+            stop_list: vec![],
+            os: None,
+        };
+        let os_name = config.target_os();
+        // Проверяем, что возвращается непустая строка (зависит от платформы)
+        assert!(!os_name.is_empty());
+    }
+
+    #[test]
+    fn test_target_os_override() {
+        let config = Config {
+            backends: vec![],
+            explain_language: "en".to_string(),
+            cache_dir: PathBuf::from("/tmp"),
+            stop_list: vec![],
+            os: Some("FreeBSD".to_string()),
+        };
+        assert_eq!(config.target_os(), "FreeBSD");
+    }
 
     #[test]
     fn test_parse_config_with_stop_list() {
