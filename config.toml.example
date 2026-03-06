@@ -1,7 +1,7 @@
-# Язык объяснений
+# Язык
 explain_language = "ru"
 
-# Стоп-лист (простые подстроки)
+# Стоп-лист
 stop_list = [
     "rm -rf /",
     "rm -rf /*",
@@ -14,14 +14,21 @@ stop_list = [
     "fdisk",
 ]
 
-# Primary backend
+# Основной бэкенд
 [[backends]]
-api_url = "https://gptunnel.ru/v1/chat/completions"
-api_key = "shds-top-secret-key"  # использовать свой api_key
-model = "gpt-4.1-nano"  # оптимально по соотношению цены, скорости и качества
+api_url = "https://routerai.ru/api/v1/chat/completions"
+api_key = "top-secret-key"  # использовать свой api_key
+model = "meta-llama/llama-4-maverick"
 timeout_secs = 60
 
-# Local ollama backend
+# Запасной бэкенд
+[[backends]]
+api_url = "https://gptunnel.ru/v1/chat/completions"
+api_key = "top-secret-key"  # использовать свой api_key
+model = "gpt-4.1-nano"
+timeout_secs = 60
+
+# Локальный бэкенд
 [[backends]]
 api_url = "http://localhost:11434/v1/chat/completions"
 api_key = ""

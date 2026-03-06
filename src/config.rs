@@ -7,7 +7,7 @@ pub struct Backend {
     pub api_key: Option<String>,
     pub model: String,
     #[serde(rename = "type", default = "default_backend_type")]
-    pub backend_type: String, // пока только "openai"
+    pub backend_type: String, // пока только "openai", так же подходит для ollama
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
 }

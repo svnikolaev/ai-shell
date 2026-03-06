@@ -1,4 +1,3 @@
-use anyhow::Context;
 use atty::Stream;
 use clap::Parser;
 use std::io::Read;
